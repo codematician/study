@@ -21,6 +21,43 @@ class Classifier(metaclass=ABCMeta):
     def predict(self, x):
         pass
 
+class DecisionTreeNode:
+    def __init__(self, attr, values):
+        self._attr = attr
+        self._values = {value:None for value in values}
+
+    def add_value(self, value, target):
+        self._values[value] = target
+
+
+class DecisionTreeClassifier(Classifier):
+    """A classifier that builds a decision tree to predict."""
+
+    def __init__(self):
+        self._top_node = None
+        self._default_val = None
+        self._predict_field = None
+        self._predict_default = None
+
+    def _create_decision_tree(self, df, dtree_node=None, attrs=None):
+        if len(df) == 0:
+            return
+        if attrs is None:
+            attrs = df.columns
+        if len(attrs) == 0:
+            return df[self._predict_field].mode()[0]
+        best_attr = self._choose_attr(df, attrs)
+        tree = DecisionTreeNode(best_attr, df[best_attr].unique)
+
+    def fit(self, df, predict_field="class", default_val=None):
+        self._predict_field = predict_field
+        self._predict_default = default_val
+        self._create_decision_tree(df)
+
+    def predict(self, x):
+        pass
+
+
 
 class LookUpClassifier(Classifier):
     """A classifier that looks up an answer in a training set.

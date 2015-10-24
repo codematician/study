@@ -13,6 +13,7 @@ class Classifier(metaclass=ABCMeta):
 
     - predict: Takes single row of data and produces the field trained to fit.
     """
+
     @abstractmethod
     def fit(self, df, predict_field="class"):
         pass
@@ -20,14 +21,6 @@ class Classifier(metaclass=ABCMeta):
     @abstractmethod
     def predict(self, x):
         pass
-
-class DecisionTreeNode:
-    def __init__(self, attr, values):
-        self.attr = attr
-        self.values = {value:None for value in values}
-
-    def add_value(self, value, target):
-        self.values[value] = target
 
 
 class DecisionTreeClassifier(Classifier):
@@ -39,28 +32,31 @@ class DecisionTreeClassifier(Classifier):
         self._predict_field = None
         self._predict_default = None
 
+    def _create_decision_node(self, attr, values):
+        return {'attr': attr, 'values': {value: None for value in values}}
+
     def _create_decision_tree(self, df, attrs=None, default=None):
         if len(df) == 0:
             return default
         if all(df[self._predict_field] == df[self._predict_field].iloc[0]):
             return df[self._predict_field].iloc[0]
         if attrs is None:
-            attrs = df.columns
+            attrs = set(df.columns) - set([self._predict_field])
         if len(attrs) == 0:
             return self._majority_val(df, self._predict_field)
         best_attr = self._choose_attr(df, attrs)
         best_attr_vals = df[best_attr].unique()
-        tree = DecisionTreeNode(best_attr, best_attr_vals)
+        tree = self._create_decision_node(best_attr, best_attr_vals)
         maj_vals = self._majority_val(df, best_attr)
         new_attrs = set(attrs) - set([best_attr])
         for val in best_attr_vals:
             df_v = df[df[best_attr] == val]
             sub_tree = self._create_decision_tree(df_v, new_attrs, maj_vals)
-            tree.add_value(val, sub_tree)
+            tree['values'][val] = sub_tree
         return tree
 
     def _choose_attr(self, df, attrs):
-        return attrs[0]
+        return list(attrs)[0]
 
     def _majority_val(self, df, attr):
         if len(df) == 0:
@@ -76,10 +72,10 @@ class DecisionTreeClassifier(Classifier):
 
     def predict(self, x):
         curr_node = self._top_node
-        while isinstance(curr_node, DecisionTreeNode):
-            curr_node = curr_node.values.get( x[curr_node.attr], self._predict_default )
+        while isinstance(curr_node, dict):
+            attr, values = curr_node["attr"], curr_node["values"]
+            curr_node = values.get(attr, self._predict_default)
         return curr_node
-
 
 
 class LookUpClassifier(Classifier):
@@ -95,6 +91,7 @@ class LookUpClassifier(Classifier):
     - Russell, Stuart, and Peter Norvig. "Artificial intelligence: a modern approach." (1995). APA
 
     """
+
     def __init__(self):
         self._lookup_df = None
         self._predict_field = None
@@ -122,6 +119,7 @@ class MajorityClassifier(Classifier):
      This classifier is only useful for comparing the performance of a bad model.
 
     """
+
     def __init__(self):
         self._prediction_value = None
 

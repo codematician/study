@@ -3,17 +3,21 @@
 from pprint import pprint
 
 from study.datasets import cars_df
-from study.ml.classifiers import LookUpClassifier, MajorityClassifier
+from study.ml.classifiers import DecisionTreeClassifier, LookUpClassifier, MajorityClassifier
 
 
 def main(num_test=10):
-    classifiers = {"lookup": LookUpClassifier(), "majority": MajorityClassifier()}
+    classifiers = {"decision": DecisionTreeClassifier(),
+                   "lookup": LookUpClassifier(),
+                   "majority": MajorityClassifier(),
+                   }
     train, test = cars_df[:-num_test], cars_df[-num_test:]
     list(map(lambda c: c.fit(train), classifiers.values()))
     predictions = {name: sum(c.predict(row[1]) == row[1].ix["class"] for row in test.iterrows()) / num_test for name, c in
                    classifiers.items()}
     print("Classification success percent")
     print(predictions)
+    pprint(classifiers["decision"]._top_node)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,12 @@ class Classifier(metaclass=ABCMeta):
     def predict(self, x):
         pass
 
+    def _majority_val(self, df, attr):
+        if len(df) == 0:
+            return None
+        mode = df[attr].mode()
+        return mode[0] if len(mode) > 0 else df[attr].iloc[0]
+
 
 class DecisionTreeClassifier(Classifier):
     """A classifier that builds a decision tree to predict."""
@@ -59,12 +65,6 @@ class DecisionTreeClassifier(Classifier):
     def _choose_attr(self, df, attrs):
         gains = {attr: self._attr_gain(df, attr) for attr in attrs}
         return max(gains, key=lambda x: gains[x])
-
-    def _majority_val(self, df, attr):
-        if len(df) == 0:
-            return None
-        mode = df[attr].mode()
-        return mode[0] if len(mode) > 0 else df[attr].iloc[0]
 
     def _attr_gain(self, df, attr):
         s = df[self._predict_field]
@@ -116,7 +116,7 @@ class LookUpClassifier(Classifier):
 
     def fit(self, df, predict_field="class"):
         self._predict_field = predict_field
-        self._predict_default = df[predict_field].mode()[0]
+        self._predict_default = self._majority_val(df, predict_field)
         self._lookup_df = df.drop_duplicates()
         return True
 
@@ -141,7 +141,7 @@ class MajorityClassifier(Classifier):
         self._prediction_value = None
 
     def fit(self, df, predict_field="class"):
-        self._prediction_value = df[predict_field].mode()[0]
+        self._prediction_value = self._majority_val(df, predict_field)
         return True
 
     def predict(self, x):

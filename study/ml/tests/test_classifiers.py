@@ -2,13 +2,45 @@ import unittest
 
 import pandas as pd
 
-from study.ml.classifiers import LookUpClassifier, MajorityClassifier
+from study.ml.classifiers import DecisionTreeClassifier, LookUpClassifier, MajorityClassifier
 
 
 class ClassifierBaseTest(unittest.TestCase):
 
     data1_df = pd.DataFrame({'one': [1., 2., 3., 4.],
                              'two': [1., 3., 2., 1.]})
+
+
+class TestDecisionTreeClassifier(ClassifierBaseTest):
+    """Test the LookupClassifier"""
+
+    def test_creation(self):
+        """Test creation of decision tree classifier"""
+        classifier = DecisionTreeClassifier()
+        self.assertTrue(classifier)
+
+    def test_fit(self):
+        """Test fit method of decision tree classifier"""
+        fit_res = DecisionTreeClassifier().fit(self.data1_df, "two")
+        self.assertTrue(fit_res)
+
+    def test_prediction_lookup(self):
+        """Test predict method of decision tree classifier"""
+        classifier = DecisionTreeClassifier()
+        predict_field = "two"
+        classifier.fit(self.data1_df, predict_field)
+        predict_input = pd.Series(data=[2., ], index=["one", ])
+        prediction = classifier.predict(predict_input)
+        self.assertEqual(prediction, self.data1_df[self.data1_df["one"] == 2.][predict_field].iloc[0])
+
+    def test_prediction_default(self):
+        """Test predict method of decision tree classifier"""
+        classifier = DecisionTreeClassifier()
+        predict_field = "two"
+        classifier.fit(self.data1_df, predict_field)
+        predict_input = pd.Series(data=[5., ], index=["one"])
+        prediction = classifier.predict(predict_input)
+        self.assertEqual(prediction, self.data1_df[predict_field].mode()[0])
 
 
 class TestLookupClassifier(ClassifierBaseTest):

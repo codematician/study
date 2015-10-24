@@ -23,11 +23,11 @@ class Classifier(metaclass=ABCMeta):
 
 class DecisionTreeNode:
     def __init__(self, attr, values):
-        self._attr = attr
-        self._values = {value:None for value in values}
+        self.attr = attr
+        self.values = {value:None for value in values}
 
     def add_value(self, value, target):
-        self._values[value] = target
+        self.values[value] = target
 
 
 class DecisionTreeClassifier(Classifier):
@@ -39,23 +39,46 @@ class DecisionTreeClassifier(Classifier):
         self._predict_field = None
         self._predict_default = None
 
-    def _create_decision_tree(self, df, dtree_node=None, attrs=None):
+    def _create_decision_tree(self, df, attrs=None, default=None):
         if len(df) == 0:
-            return
+            return default
+        if all(df[self._predict_field] == df[self._predict_field].iloc[0]):
+            return df[self._predict_field].iloc[0]
         if attrs is None:
             attrs = df.columns
         if len(attrs) == 0:
-            return df[self._predict_field].mode()[0]
+            return self._majority_val(df, self._predict_field)
         best_attr = self._choose_attr(df, attrs)
-        tree = DecisionTreeNode(best_attr, df[best_attr].unique)
+        best_attr_vals = df[best_attr].unique()
+        tree = DecisionTreeNode(best_attr, best_attr_vals)
+        maj_vals = self._majority_val(df, best_attr)
+        new_attrs = set(attrs) - set([best_attr])
+        for val in best_attr_vals:
+            df_v = df[df[best_attr] == val]
+            sub_tree = self._create_decision_tree(df_v, new_attrs, maj_vals)
+            tree.add_value(val, sub_tree)
+        return tree
+
+    def _choose_attr(self, df, attrs):
+        return attrs[0]
+
+    def _majority_val(self, df, attr):
+        if len(df) == 0:
+            return None
+        mode = df[attr].mode()
+        return mode[0] if len(mode) > 0 else df[attr].iloc[0]
 
     def fit(self, df, predict_field="class", default_val=None):
         self._predict_field = predict_field
-        self._predict_default = default_val
-        self._create_decision_tree(df)
+        self._predict_default = default_val if default_val else self._majority_val(df, predict_field)
+        self._top_node = self._create_decision_tree(df)
+        return True
 
     def predict(self, x):
-        pass
+        curr_node = self._top_node
+        while isinstance(curr_node, DecisionTreeNode):
+            curr_node = curr_node.values.get( x[curr_node.attr], self._predict_default )
+        return curr_node
 
 
 

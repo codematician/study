@@ -3,6 +3,8 @@ import operator
 import math
 from functools import reduce
 
+import numpy as np
+
 
 class Classifier(metaclass=ABCMeta):
     """A abstrace base class for classifiers.
@@ -38,6 +40,7 @@ class DecisionTreeClassifier(Classifier):
         self._default_val = None
         self._predict_field = None
         self._predict_default = None
+        self._count_field = "_counts"
 
     def _create_decision_node(self, attr, values):
         return {'attr': attr, 'values': {value: None for value in values}}
@@ -48,7 +51,7 @@ class DecisionTreeClassifier(Classifier):
         if all(df[self._predict_field] == df[self._predict_field].iloc[0]):
             return df[self._predict_field].iloc[0]
         if attrs is None:
-            attrs = list(set(df.columns) - set([self._predict_field]))
+            attrs = list(set(df.columns) - set([self._predict_field, self._count_field]))
         if len(attrs) == 0:
             return self._majority_val(df, self._predict_field)
         best_attr = self._choose_attr(df, attrs)
@@ -70,8 +73,8 @@ class DecisionTreeClassifier(Classifier):
         s = df[self._predict_field]
         attr_total_info = self._information(s)
 
-        attr_counts = df.groupby(attr).count().iloc[:, 1]
-        attr_pred_counts = df.groupby([attr, self._predict_field]).count().iloc[:, 1]
+        attr_counts = df.groupby(attr)[self._count_field].sum()
+        attr_pred_counts = df.groupby([attr, self._predict_field])[self._count_field].sum()
         attr_names = attr_pred_counts.index.levels[0]
         attr_info = {attr_name: self._information(attr_pred_counts[attr_name]) for attr_name in attr_names}
         attr_remainders = {attr_name: attr_counts[attr_name] / len(df) * attr_info[attr_name] for attr_name in
@@ -82,6 +85,7 @@ class DecisionTreeClassifier(Classifier):
         return sum([-p * math.log2(p) for p in s.groupby(lambda x: s[x]).count() / len(s)])
 
     def fit(self, df, predict_field="class", default_val=None):
+        df[self._count_field] = np.ones(len(df))
         self._predict_field = predict_field
         self._predict_default = default_val if default_val else self._majority_val(df, predict_field)
         self._top_node = self._create_decision_tree(df)

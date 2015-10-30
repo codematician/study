@@ -1,9 +1,9 @@
 from abc import ABCMeta, abstractmethod
 import operator
-import math
 from functools import reduce
 
-import numpy as np
+from .trees import NaiveNonNumericDecisionTree
+from ..utils import majority_val
 
 
 class Classifier(metaclass=ABCMeta):
@@ -25,78 +25,18 @@ class Classifier(metaclass=ABCMeta):
     def predict(self, x):
         pass
 
-    def _majority_val(self, df, attr):
-        if len(df) == 0:
-            return None
-        mode = df[attr].mode()
-        return mode[0] if len(mode) > 0 else df[attr].iloc[0]
-
 
 class DecisionTreeClassifier(Classifier):
     """A classifier that builds a decision tree to predict."""
 
-    def __init__(self):
-        self._top_node = None
-        self._default_val = None
-        self._predict_field = None
-        self._predict_default = None
-        self._count_field = "_counts"
-
-    def _create_decision_node(self, attr, values):
-        return {'attr': attr, 'values': {value: None for value in values}}
-
-    def _create_decision_tree(self, df, attrs=None, default=None):
-        if len(df) == 0:
-            return default
-        if all(df[self._predict_field] == df[self._predict_field].iloc[0]):
-            return df[self._predict_field].iloc[0]
-        if attrs is None:
-            attrs = list(set(df.columns) - set([self._predict_field, self._count_field]))
-        if len(attrs) == 0:
-            return self._majority_val(df, self._predict_field)
-        best_attr = self._choose_attr(df, attrs)
-        best_attr_vals = df[best_attr].unique()
-        tree = self._create_decision_node(best_attr, best_attr_vals)
-        maj_vals = self._majority_val(df, best_attr)
-        new_attrs = list(set(attrs) - set([best_attr]))
-        for val in best_attr_vals:
-            df_v = df[df[best_attr] == val]
-            sub_tree = self._create_decision_tree(df_v, new_attrs, maj_vals)
-            tree['values'][val] = sub_tree
-        return tree
-
-    def _choose_attr(self, df, attrs):
-        gains = {attr: self._attr_gain(df, attr) for attr in attrs}
-        return max(gains, key=lambda x: gains[x])
-
-    def _attr_gain(self, df, attr):
-        s = df[self._predict_field]
-        attr_total_info = self._information(s)
-
-        attr_counts = df.groupby(attr)[self._count_field].sum()
-        attr_pred_counts = df.groupby([attr, self._predict_field])[self._count_field].sum()
-        attr_names = attr_pred_counts.index.levels[0]
-        attr_info = {attr_name: self._information(attr_pred_counts[attr_name]) for attr_name in attr_names}
-        attr_remainders = {attr_name: attr_counts[attr_name] / len(df) * attr_info[attr_name] for attr_name in
-                           attr_names}
-        return attr_total_info - sum(attr_remainders.values())
-
-    def _information(self, s):
-        return sum([-p * math.log2(p) for p in s.groupby(lambda x: s[x]).count() / len(s)])
+    def __init__(self, tree_class=NaiveNonNumericDecisionTree):
+        self._tree = tree_class()
 
     def fit(self, df, predict_field="class", default_val=None):
-        df[self._count_field] = np.ones(len(df))
-        self._predict_field = predict_field
-        self._predict_default = default_val if default_val else self._majority_val(df, predict_field)
-        self._top_node = self._create_decision_tree(df)
-        return True
+        return self._tree.fit(df, predict_field, default_val)
 
     def predict(self, x):
-        curr_node = self._top_node
-        while isinstance(curr_node, dict):
-            attr, values = curr_node["attr"], curr_node["values"]
-            curr_node = values.get(x[attr], self._predict_default)
-        return curr_node
+        return self._tree.predict(x)
 
 
 class LookUpClassifier(Classifier):
@@ -120,7 +60,7 @@ class LookUpClassifier(Classifier):
 
     def fit(self, df, predict_field="class"):
         self._predict_field = predict_field
-        self._predict_default = self._majority_val(df, predict_field)
+        self._predict_default = majority_val(df, predict_field)
         self._lookup_df = df.drop_duplicates()
         return True
 
@@ -145,7 +85,7 @@ class MajorityClassifier(Classifier):
         self._prediction_value = None
 
     def fit(self, df, predict_field="class"):
-        self._prediction_value = self._majority_val(df, predict_field)
+        self._prediction_value = majority_val(df, predict_field)
         return True
 
     def predict(self, x):

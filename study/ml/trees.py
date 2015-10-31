@@ -1,14 +1,12 @@
 """Module for different Decision Tree implementations"""
 
-import math
-
 import numpy as np
 
-from ..utils import majority_val
+from ..utils import majority_val, series_info
 
 
 class NaiveNonNumericDecisionTree(object):
-    """Decision tree with no pruning or numerical attributes"""
+    """Decision tree with no pruning, missing values, or numerical attributes"""
 
     def __init__(self):
         self._top_node = None
@@ -47,19 +45,15 @@ class NaiveNonNumericDecisionTree(object):
 
     def _attr_gain(self, df, attr):
         s = df[self._predict_field]
-        attr_total_info = self._information(s)
+        attr_total_info = series_info(s)
 
         attr_counts = df.groupby(attr)[self._count_field].sum()
         attr_pred_counts = df.groupby([attr, self._predict_field])[self._count_field].sum()
         attr_names = attr_pred_counts.index.levels[0]
-        attr_info = {attr_name: self._information(attr_pred_counts[attr_name]) for attr_name in attr_names}
+        attr_info = {attr_name: series_info(attr_pred_counts[attr_name]) for attr_name in attr_names}
         attr_remainders = {attr_name: attr_counts[attr_name] / len(df) * attr_info[attr_name] for attr_name in
                            attr_names}
         return attr_total_info - sum(attr_remainders.values())
-
-    @staticmethod
-    def _information(s):
-        return sum([-p * math.log2(p) for p in s.groupby(lambda x: s[x]).count() / len(s)])
 
     def fit(self, df, predict_field="class", default_val=None):
         df[self._count_field] = np.ones(len(df))
@@ -74,3 +68,43 @@ class NaiveNonNumericDecisionTree(object):
             attr, values = curr_node["attr"], curr_node["values"]
             curr_node = values.get(x[attr], self._predict_default)
         return curr_node
+
+
+class NaiveNumericDecisionTree(NaiveNonNumericDecisionTree):
+    """Decision tree with no pruning or missing values but with numerical attributes"""
+
+    def _attr_gain(self, df, attr):
+        use_continuous_gain = False
+        if np.issubdtype(df.dtypes[attr], np.number):
+            splits = df[attr].unique()
+            if len(splits) > 5:  # Should really have a way to check if data is ordinal versus continuous.
+                use_continuous_gain = True
+        if use_continuous_gain:
+            return self._attr_gain_continuous(df, attr)
+        else:
+            return (super(self, NaiveNumericDecisionTree)._attr_gain(df, attr), None)
+
+    def _attr_gain_continuous(self, df, attr):
+        splits = list(df[attr].unique())
+        splits.remove(min(splits))
+        attr_total_info = series_info(df[self._predict_field])
+        split_gain = {}
+        for split in splits:
+            split_fun = lambda idx: df[attr][idx] < split
+            attr_counts = df.groupby(split_fun)[self._count_field].sum()
+            attr_pred_counts = df.groupby([split_fun, self._predict_field])[self._count_field].sum()
+            attr_names = attr_pred_counts.index.levels[0]
+            attr_info = {attr_name: series_info(attr_pred_counts[attr_name]) for attr_name in attr_names}
+            attr_remainders = {attr_name: attr_counts[attr_name] / len(df) * attr_info[attr_name] for attr_name in
+                               attr_names}
+            split_gain[split] = attr_total_info - sum(attr_remainders.values())
+        max_gain = max(split_gain.values())
+        split_max_gain = filter(lambda k: split_gain[k] == max_gain, split_gain).__next__()
+        return max_gain, split_max_gain
+
+    def _choose_attr(self, df, attrs):
+        gains = {attr: self._attr_gain(df, attr) for attr in attrs}
+        return max(gains, key=lambda x: gains[x][0])
+
+    def predict(self, x):
+        pass

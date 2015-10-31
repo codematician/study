@@ -4,7 +4,7 @@ import pandas as pd
 
 from study.ml.boosters import AdaBoost
 from study.ml.classifiers import DecisionTreeClassifier
-from .test_classifiers import ClassifierBaseTest
+from test_classifiers import ClassifierBaseTest
 
 
 class TestAdaBoost(ClassifierBaseTest):

@@ -29,15 +29,18 @@ class NaiveNonNumericDecisionTree(object):
         if len(attrs) == 0:
             return majority_val(df, self._predict_field)
         best_attr = self._choose_attr(df, attrs)
-        best_attr_vals = df[best_attr].unique()
+        best_attr_vals = self._best_attr_vals(df, best_attr)
         tree = self._create_decision_node(best_attr, best_attr_vals)
-        maj_vals = majority_val(df, best_attr)
+        maj_vals = majority_val(df, self._predict_field)
         new_attrs = [val for val in attrs if val != best_attr]
-        for val in best_attr_vals:
-            df_v = df[df[best_attr] == val]
-            sub_tree = self._create_decision_tree(df_v, new_attrs, maj_vals)
+        df_parts = self._partition_df(df, best_attr, best_attr_vals)
+        for val, df_part in zip(best_attr_vals, df_parts):
+            sub_tree = self._create_decision_tree(df_part, new_attrs, maj_vals)
             tree['values'][val] = sub_tree
         return tree
+
+    def _best_attr_vals(self, df, best_attr):
+        return df[best_attr].unique()
 
     def _choose_attr(self, df, attrs):
         gains = {attr: self._attr_gain(df, attr) for attr in attrs}
@@ -58,6 +61,9 @@ class NaiveNonNumericDecisionTree(object):
                            attr_names}
         return attr_remainders
 
+    def _partition_df(self, df, attr, vals):
+        return list(map(lambda val: df[df[attr] == val], vals))
+
     def fit(self, df, predict_field="class", default_val=None):
         df[self._count_field] = np.ones(len(df))
         self._predict_field = predict_field
@@ -76,16 +82,56 @@ class NaiveNonNumericDecisionTree(object):
 class NaiveNumericDecisionTree(NaiveNonNumericDecisionTree):
     """Decision tree with no pruning or missing values but with numerical attributes"""
 
-    def _attr_gain(self, df, attr):
-        use_continuous_gain = False
+    @staticmethod
+    def _create_decision_node(attr, values, split):
+        return {'attr': attr, 'values': {value: None for value in values}, 'split': split}
+
+    def _create_decision_tree(self, df, attrs=None, default=None):
+        if len(df) == 0:
+            return default
+        if len(df[self._predict_field].unique()) <= 1:
+            return df[self._predict_field].iloc[0]
+        if attrs is None:
+            attrs = list(set(df.columns) - {self._predict_field, self._count_field})
+        if len(attrs) == 0:
+            return majority_val(df, self._predict_field)
+        best_attr, split = self._choose_attr(df, attrs)
+        best_attr_vals = self._best_attr_vals(df, best_attr)
+        tree = self._create_decision_node(best_attr, best_attr_vals, split)
+        maj_vals = majority_val(df, self._predict_field)
+        new_attrs = [val for val in attrs if val != best_attr]
+        df_parts = self._partition_df(df, best_attr, best_attr_vals, split)
+        for val, df_part in zip(best_attr_vals, df_parts):
+            sub_tree = self._create_decision_tree(df_part, new_attrs, maj_vals)
+            tree['values'][val] = sub_tree
+        return tree
+
+    @staticmethod
+    def _is_attr_continuous(df, attr):
+        ret_val = False
         if np.issubdtype(df.dtypes[attr], np.number):
             splits = df[attr].unique()
             if len(splits) > 5:  # Should really have a way to check if data is ordinal versus continuous.
-                use_continuous_gain = True
-        if use_continuous_gain:
+                ret_val = True
+        return ret_val
+
+    def _partition_df(self, df, attr, vals, split):
+        parts = []
+        if split is not None:
+            for val in vals:
+                if val:
+                    parts.append(df[df[attr] < split])
+                else:
+                    parts.append(df[df[attr] >= split])
+        else:
+            parts = super()._partition_df(df, attr, vals)
+        return parts
+
+    def _attr_gain(self, df, attr):
+        if self._is_attr_continuous(df, attr):
             return self._attr_gain_continuous(df, attr)
         else:
-            return super(self, NaiveNumericDecisionTree)._attr_gain(df, attr), None
+            return super()._attr_gain(df, attr), None
 
     def _attr_gain_continuous(self, df, attr):
         splits = list(df[attr].unique())
@@ -99,9 +145,22 @@ class NaiveNumericDecisionTree(NaiveNonNumericDecisionTree):
         split_max_gain = filter(lambda k: split_gain[k] == max_gain, split_gain).__next__()
         return max_gain, split_max_gain
 
+    def _best_attr_vals(self, df, attr):
+        if self._is_attr_continuous(df, attr):
+            return [True, False]
+        else:
+            return super()._best_attr_vals(df, attr)
+
     def _choose_attr(self, df, attrs):
         gains = {attr: self._attr_gain(df, attr) for attr in attrs}
-        return max(gains, key=lambda x: gains[x][0])
+        max_gain = max(gains, key=lambda x: gains[x][0])
+        return max_gain, gains[max_gain][1]
 
     def predict(self, x):
-        pass
+        curr_node = self._top_node
+        while isinstance(curr_node, dict):
+            attr, values, split = curr_node["attr"], curr_node["values"], curr_node["split"]
+            if split is not None:
+                curr_node
+            curr_node = values.get(x[attr], self._predict_default)
+        return curr_node

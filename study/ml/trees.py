@@ -46,14 +46,17 @@ class NaiveNonNumericDecisionTree(object):
     def _attr_gain(self, df, attr):
         s = df[self._predict_field]
         attr_total_info = series_info(s)
+        attr_remainders = self._groupby_remainder(df, attr)
+        return attr_total_info - sum(attr_remainders.values())
 
-        attr_counts = df.groupby(attr)[self._count_field].sum()
-        attr_pred_counts = df.groupby([attr, self._predict_field])[self._count_field].sum()
+    def _groupby_remainder(self, df, gb_key):
+        attr_counts = df.groupby(gb_key)[self._count_field].sum()
+        attr_pred_counts = df.groupby([gb_key, self._predict_field])[self._count_field].sum()
         attr_names = attr_pred_counts.index.levels[0]
         attr_info = {attr_name: series_info(attr_pred_counts[attr_name]) for attr_name in attr_names}
         attr_remainders = {attr_name: attr_counts[attr_name] / len(df) * attr_info[attr_name] for attr_name in
                            attr_names}
-        return attr_total_info - sum(attr_remainders.values())
+        return attr_remainders
 
     def fit(self, df, predict_field="class", default_val=None):
         df[self._count_field] = np.ones(len(df))
@@ -82,7 +85,7 @@ class NaiveNumericDecisionTree(NaiveNonNumericDecisionTree):
         if use_continuous_gain:
             return self._attr_gain_continuous(df, attr)
         else:
-            return (super(self, NaiveNumericDecisionTree)._attr_gain(df, attr), None)
+            return super(self, NaiveNumericDecisionTree)._attr_gain(df, attr), None
 
     def _attr_gain_continuous(self, df, attr):
         splits = list(df[attr].unique())
@@ -90,13 +93,7 @@ class NaiveNumericDecisionTree(NaiveNonNumericDecisionTree):
         attr_total_info = series_info(df[self._predict_field])
         split_gain = {}
         for split in splits:
-            split_fun = lambda idx: df[attr][idx] < split
-            attr_counts = df.groupby(split_fun)[self._count_field].sum()
-            attr_pred_counts = df.groupby([split_fun, self._predict_field])[self._count_field].sum()
-            attr_names = attr_pred_counts.index.levels[0]
-            attr_info = {attr_name: series_info(attr_pred_counts[attr_name]) for attr_name in attr_names}
-            attr_remainders = {attr_name: attr_counts[attr_name] / len(df) * attr_info[attr_name] for attr_name in
-                               attr_names}
+            attr_remainders = self._groupby_remainder(df, lambda idx: df[attr][idx] < split)
             split_gain[split] = attr_total_info - sum(attr_remainders.values())
         max_gain = max(split_gain.values())
         split_max_gain = filter(lambda k: split_gain[k] == max_gain, split_gain).__next__()
